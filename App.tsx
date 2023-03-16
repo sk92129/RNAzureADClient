@@ -25,6 +25,12 @@ import {
   ReloadInstructions,
 } from 'react-native/Libraries/NewAppScreen';
 
+import AzureAuth from 'react-native-azure-auth';
+
+const azureAuth = new AzureAuth({
+  clientId: 'YOUR_CLIENT_ID',
+});
+
 type SectionProps = PropsWithChildren<{
   title: string;
 }>;
