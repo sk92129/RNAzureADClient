@@ -5,120 +5,143 @@
  * @format
  */
 
-import React from 'react';
-import type {PropsWithChildren} from 'react';
-import {
-  SafeAreaView,
-  ScrollView,
-  StatusBar,
-  StyleSheet,
-  Text,
-  useColorScheme,
-  View,
-} from 'react-native';
-
-import {
-  Colors,
-  DebugInstructions,
-  Header,
-  LearnMoreLinks,
-  ReloadInstructions,
-} from 'react-native/Libraries/NewAppScreen';
+import React, {Component} from 'react';
+import {Button, FlatList, StyleSheet, Text, View} from 'react-native';
 
 import AzureAuth from 'react-native-azure-auth';
 
 const azureAuth = new AzureAuth({
-  clientId: 'YOUR_CLIENT_ID',
+  clientId: '33b301ea-3400-4b26-98f6-703e372411b6',
 });
 
-type SectionProps = PropsWithChildren<{
-  title: string;
-}>;
+export default class App extends Component {
+  constructor(props) {
+    super(props);
+    this.state = {accessToken: null, user: '', mails: [], userId: ''};
+  }
 
-function Section({children, title}: SectionProps): JSX.Element {
-  const isDarkMode = useColorScheme() === 'dark';
-  return (
-    <View style={styles.sectionContainer}>
-      <Text
-        style={[
-          styles.sectionTitle,
-          {
-            color: isDarkMode ? Colors.white : Colors.black,
-          },
-        ]}>
-        {title}
-      </Text>
-      <Text
-        style={[
-          styles.sectionDescription,
-          {
-            color: isDarkMode ? Colors.light : Colors.dark,
-          },
-        ]}>
-        {children}
-      </Text>
-    </View>
-  );
-}
-
-function App(): JSX.Element {
-  const isDarkMode = useColorScheme() === 'dark';
-
-  const backgroundStyle = {
-    backgroundColor: isDarkMode ? Colors.darker : Colors.lighter,
+  _onLogin = async () => {
+    try {
+      let tokens = await azureAuth.webAuth.authorize({
+        scope: 'openid profile User.Read',
+      });
+      console.log('CRED>>>', tokens);
+      this.setState({accessToken: tokens.accessToken});
+      let info = await azureAuth.auth.msGraphRequest({
+        token: tokens.accessToken,
+        path: 'me',
+      });
+      console.log('info', info);
+      this.setState({user: info.displayName, userId: tokens.userId});
+    } catch (error) {
+      console.log('Error during Azure operation', error);
+    }
   };
 
-  return (
-    <SafeAreaView style={backgroundStyle}>
-      <StatusBar
-        barStyle={isDarkMode ? 'light-content' : 'dark-content'}
-        backgroundColor={backgroundStyle.backgroundColor}
-      />
-      <ScrollView
-        contentInsetAdjustmentBehavior="automatic"
-        style={backgroundStyle}>
-        <Header />
-        <View
-          style={{
-            backgroundColor: isDarkMode ? Colors.black : Colors.white,
-          }}>
-          <Section title="Step One">
-            Edit <Text style={styles.highlight}>App.tsx</Text> to change this
-            screen and then come back to see your edits.
-          </Section>
-          <Section title="See Your Changes">
-            <ReloadInstructions />
-          </Section>
-          <Section title="Debug">
-            <DebugInstructions />
-          </Section>
-          <Section title="Learn More">
-            Read the docs to discover what to do next:
-          </Section>
-          <LearnMoreLinks />
+  _onGetMails = async () => {
+    try {
+      let tokens = await azureAuth.auth.acquireTokenSilent({
+        scope: 'Mail.Read',
+        userId: this.state.userId,
+      });
+      console.log('Silent:', tokens);
+      if (!tokens) {
+        tokens = await azureAuth.webAuth.authorize({scope: 'Mail.Read'});
+        console.log('NewWeb:', tokens);
+      }
+      console.log('TOK>>>', tokens.accessToken);
+      let mails = await azureAuth.auth.msGraphRequest({
+        token: tokens.accessToken,
+        path: '/me/mailFolders/Inbox/messages',
+      });
+      let mailArr = [];
+      mails.value.forEach(element => {
+        mailArr.push({subject: element.subject});
+      });
+      if (mailArr.length === 0) {
+        mailArr.push({subject: 'No mails found'});
+      }
+      console.log('Mails: ' + mailArr.length);
+      this.setState({mails: mailArr});
+    } catch (error) {
+      console.log(error);
+    }
+  };
+
+  _onLogout = () => {
+    azureAuth.webAuth
+      .clearSession()
+      .then(success => {
+        this.setState({accessToken: null, user: null});
+      })
+      .catch(error => console.log(error));
+  };
+
+  render() {
+    let loggedIn = this.state.accessToken ? true : false;
+    return (
+      <View style={styles.container}>
+        <View>
+          <Text style={styles.header}>Azure Auth - Login</Text>
+          <Text style={styles.text}>Hello {this.state.user}!</Text>
+          <Text style={styles.text}>
+            You are {loggedIn ? '' : 'not '}logged in.
+          </Text>
         </View>
-      </ScrollView>
-    </SafeAreaView>
-  );
+        <View style={styles.buttons}>
+          <Button
+            style={styles.button}
+            onPress={loggedIn ? this._onLogout : this._onLogin}
+            title={loggedIn ? 'Log Out' : 'Log In'}
+          />
+          <Button
+            style={styles.button}
+            onPress={this._onGetMails}
+            disabled={!loggedIn}
+            title={'Get E-Mails'}
+          />
+        </View>
+        <FlatList
+          style={styles.list}
+          data={this.state.mails}
+          renderItem={({item}) => (
+            <Text style={{padding: 10}}>{item.subject}</Text>
+          )}
+          keyExtractor={(item, index) => `key-${index}`}
+        />
+      </View>
+    );
+  }
 }
 
 const styles = StyleSheet.create({
-  sectionContainer: {
-    marginTop: 32,
-    paddingHorizontal: 24,
+  container: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'stretch',
+    backgroundColor: '#F5FCFF',
   },
-  sectionTitle: {
-    fontSize: 24,
-    fontWeight: '600',
+  header: {
+    fontSize: 20,
+    textAlign: 'center',
+    margin: 10,
   },
-  sectionDescription: {
-    marginTop: 8,
-    fontSize: 18,
-    fontWeight: '400',
+  text: {
+    textAlign: 'center',
   },
-  highlight: {
-    fontWeight: '700',
+  buttons: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    alignItems: 'baseline',
+    padding: 20,
+  },
+  button: {
+    flex: 1,
+    padding: 20,
+    margin: 20,
+  },
+  list: {
+    flex: 5,
+    margin: 20,
   },
 });
-
-export default App;
